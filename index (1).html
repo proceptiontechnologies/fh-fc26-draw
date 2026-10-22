@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EA FC 26 Draw</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#EEF1F6; --surface:#FFFFFF; --ink:#0F1B33; --muted:#5B6780; --line:#D5DBE6;
+  --accent:#1F4FD8; --accent-ink:#FFFFFF; --gold:#F2B705; --done:#E7EEFF;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{ color-scheme: dark;
+    --bg:#0C1424; --surface:#142038; --ink:#EAF0FA; --muted:#93A1BC; --line:#26355A;
+    --accent:#6E95FF; --accent-ink:#0C1424; --gold:#F5C842; --done:#1B2D55; }
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+.wrap{max-width:720px;margin:0 auto;padding:20px 16px 48px}
+header{padding:12px 0 18px;border-bottom:4px solid var(--gold);margin-bottom:20px}
+h1{font-family:"Barlow Condensed","Arial Narrow",Impact,sans-serif;font-weight:800;font-size:clamp(2.4rem,10vw,4rem);line-height:.95;margin:0}
+.sub{color:var(--muted);margin:8px 0 0}
+h2{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;font-size:1.5rem;margin:24px 0 10px}
+.stage{background:var(--surface);border:2px solid var(--gold);border-radius:12px;padding:20px 16px;text-align:center;min-height:132px;display:flex;flex-direction:column;justify-content:center}
+.stage .who{color:var(--muted)}
+.stage .spot{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;font-size:clamp(2.6rem,12vw,3.6rem);line-height:1}
+.stage.landed .spot{color:var(--accent)}
+.names{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+button{font:inherit;font-weight:600;border-radius:10px;padding:14px 12px;border:2px solid var(--accent);background:var(--surface);color:var(--ink);cursor:pointer;text-align:left}
+button.name:not(:disabled):hover{background:var(--accent);color:var(--accent-ink)}
+button.name.drawn{background:var(--done);border-color:var(--line);cursor:default}
+button.name small{display:block;font-weight:500;color:var(--muted);font-size:.85rem}
+button.ctl{padding:10px 16px;text-align:center;color:var(--accent);background:transparent}
+button:disabled{cursor:default}
+button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.ties{display:grid;gap:10px}
+.tie{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:12px}
+.tie b{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-size:1.2rem;min-width:2.6em;color:var(--muted)}
+.tbd{color:var(--muted);font-style:italic}
+.note{color:var(--muted);font-size:.9rem;margin:12px 0 0}
+.admin{margin-top:28px;padding:14px;border:1px dashed var(--muted);border-radius:10px;display:grid;gap:10px}
+.admin .row{display:flex;gap:8px;flex-wrap:wrap}
+.admin input{flex:1;min-width:160px;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.err{background:var(--surface);border:2px solid #D64545;border-radius:10px;padding:14px}
+</style>
+</head>
+<body>
+<div class="wrap" id="root"><p>Loading the draw…</p></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+// ====== 1. Firebase Realtime Database ======
+var firebaseConfig = {
+  databaseURL: "https://fh-tournament-1-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "fh-tournament-1"
+};
+// ====== 2. Starting players (the 8th can be added from the admin link) ======
+var START_PLAYERS = ["Thanipro","Dapo","Imoi","Gbenga","Taiwo","Pelumi","Benedict"];
+// ====== 3. Admin link = your page address + ?admin=2223a8f08f8b ======
+var ADMIN_KEY = "2223a8f08f8b";
+</script>
+
+<script>
+(function(){
+  var root = document.getElementById("root");
+  var isAdmin = new URLSearchParams(location.search).get("admin") === ADMIN_KEY;
+  var data = null, prevSlots = null;
+  var spinning = false, landed = false, stageWho = "Tap your name to draw your spot", stageSpot = "?", msg = "";
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs){
+      if (k === "text") e.textContent = attrs[k];
+      else if (k === "cls") e.className = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    (kids||[]).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function label(i){ return "QF" + (Math.floor(i/2)+1); }
+  function emptySlots(){ return ["","","","","","","",""]; }
+  function players(){ return (data && data.players) ? data.players.filter(Boolean) : []; }
+  function slots(){ var s = (data && data.slots) || []; var o = emptySlots(); for (var i=0;i<8;i++) o[i] = s[i] || ""; return o; }
+
+  if (!firebaseConfig.databaseURL || firebaseConfig.databaseURL.indexOf("PASTE") === 0){
+    root.textContent = "";
+    root.appendChild(el("div", {cls:"err"}, [el("strong",{text:"Setup needed: "}), "paste your Firebase config into this file (step 1 near the top)."]));
+    return;
+  }
+
+  firebase.initializeApp(firebaseConfig);
+  var ref = firebase.database().ref("draw");
+
+  ref.on("value", function(snap){
+    data = snap.val();
+    if (!data){
+      ref.transaction(function(cur){ return cur || {players: START_PLAYERS, slots: emptySlots()}; });
+      return;
+    }
+    var now = slots();
+    if (prevSlots && !spinning){
+      for (var i=0;i<8;i++){
+        if (now[i] && !prevSlots[i]){ landed = true; stageWho = now[i] + " goes to"; stageSpot = label(i); }
+      }
+    }
+    prevSlots = now;
+    render();
+  }, function(err){
+    root.textContent = "";
+    root.appendChild(el("div", {cls:"err", text:"Couldn’t reach the database: " + err.message + ". Check the database rules allow read and write."}));
+  });
+
+  function draw(name){
+    if (spinning || slots().indexOf(name) !== -1) return;
+    spinning = true; landed = false; stageWho = name + " is drawing…"; msg = ""; render();
+    var start = Date.now(), dur = 2000, result = null, done = false;
+
+    ref.transaction(function(cur){
+      if (!cur) return cur;
+      var s = cur.slots || []; var full = [];
+      for (var i=0;i<8;i++) full[i] = s[i] || "";
+      if (full.indexOf(name) !== -1) return; // already drawn, abort
+      var free = []; for (var j=0;j<8;j++) if (!full[j]) free.push(j);
+      if (!free.length) return;
+      var a = new Uint32Array(1); crypto.getRandomValues(a);
+      full[free[a[0] % free.length]] = name;
+      cur.slots = full; return cur;
+    }, function(err, committed, snap){
+      done = true;
+      if (err || !committed){ result = -1; return; }
+      var s = (snap.val().slots) || [];
+      result = s.indexOf(name);
+    });
+
+    (function tick(){
+      var t = Date.now() - start;
+      if (t < dur || !done){
+        stageSpot = "QF" + (1 + Math.floor(Math.random()*4)); renderStage();
+        setTimeout(tick, 60 + Math.min(t/dur,1)*240);
+      } else {
+        spinning = false;
+        if (result >= 0){ landed = true; stageWho = name + " goes to"; stageSpot = label(result); }
+        else { landed = false; stageWho = "That didn’t go through"; stageSpot = "?"; msg = "Someone may have drawn at the same moment. Try again."; }
+        prevSlots = slots(); render();
+      }
+    })();
+  }
+
+  function renderStage(){
+    var st = document.getElementById("stage"); if (!st) return;
+    st.className = "stage" + (landed ? " landed" : "");
+    st.querySelector(".who").textContent = stageWho;
+    st.querySelector(".spot").textContent = stageSpot;
+  }
+
+  function render(){
+    if (!data) return;
+    var s = slots(), ps = players();
+    var allDrawn = ps.length > 0 && ps.every(function(p){ return s.indexOf(p) !== -1; });
+    root.textContent = "";
+    root.appendChild(el("header", null, [
+      el("h1", {text:"The Draw"}),
+      el("p", {cls:"sub", text:"EA FC 26 Tournament quarter-finals. Tap your name to get a random spot. Everyone sees every draw live."})
+    ]));
+    root.appendChild(el("div", {cls:"stage" + (landed ? " landed" : ""), id:"stage", "aria-live":"polite"}, [
+      el("div", {cls:"who", text: allDrawn && !spinning && !landed ? "The draw is complete" : stageWho}),
+      el("div", {cls:"spot", text: allDrawn && !spinning && !landed ? "🏆" : stageSpot})
+    ]));
+
+    root.appendChild(el("h2", {text:"Players"}));
+    var grid = el("div", {cls:"names"});
+    ps.forEach(function(p){
+      var i = s.indexOf(p);
+      var b = el("button", {cls:"name" + (i !== -1 ? " drawn" : ""), onclick:function(){ draw(p); }}, [p, el("small", {text: i !== -1 ? label(i) : "Tap to draw"})]);
+      if (i !== -1 || spinning) b.disabled = true;
+      grid.appendChild(b);
+    });
+    root.appendChild(grid);
+    if (msg) root.appendChild(el("p", {cls:"note", text:msg}));
+
+    root.appendChild(el("h2", {text:"Quarter-final matchups"}));
+    var ties = el("div", {cls:"ties"});
+    var byes = allDrawn && ps.length < 8;
+    for (var q=0;q<4;q++){
+      var side = function(v){ return v ? el("span",{text:v}) : el("span",{cls:"tbd", text: byes ? "Bye, straight to the semis" : "?"}); };
+      ties.appendChild(el("div", {cls:"tie"}, [el("b",{text:"QF"+(q+1)}), side(s[q*2]), el("span",{cls:"tbd",text:"vs"}), side(s[q*2+1])]));
+    }
+    root.appendChild(ties);
+    root.appendChild(el("p", {cls:"note", text:"Each name can only be drawn once, and the spot is picked at random the moment you tap."}));
+
+    if (isAdmin){
+      var inp = el("input", {placeholder:"Add a player", "aria-label":"Add a player"});
+      root.appendChild(el("div", {cls:"admin"}, [
+        el("strong", {text:"Organizer controls"}),
+        el("div", {cls:"row"}, [inp, el("button", {cls:"ctl", text:"Add player", onclick:function(){
+          var v = inp.value.trim(); if (!v) return;
+          ref.transaction(function(cur){
+            if (!cur) return cur; var p = cur.players || [];
+            if (p.indexOf(v) !== -1 || p.length >= 8) return; p.push(v); cur.players = p; return cur;
+          });
+        }})]),
+        el("div", {cls:"row"}, [el("button", {cls:"ctl", text:"Reset the draw", onclick:function(){
+          if (!confirm("Clear every drawn spot?")) return;
+          landed = false; stageWho = "Tap your name to draw your spot"; stageSpot = "?";
+          ref.child("slots").set(emptySlots());
+        }})])
+      ]));
+    }
+  }
+})();
+</script>
+</body>
+</html>
