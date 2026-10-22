@@ -47,6 +47,27 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-o
 .admin .row{display:flex;gap:8px;flex-wrap:wrap}
 .admin input{flex:1;min-width:160px;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
 .err{background:var(--surface);border:2px solid #D64545;border-radius:10px;padding:14px}
+.tabs{display:flex;gap:4px;margin:-8px 0 20px;border-bottom:1px solid var(--line)}
+.tabs a{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;font-size:1.25rem;padding:8px 14px;color:var(--muted);text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs a[aria-current="page"]{color:var(--ink);border-color:var(--accent)}
+.tabs a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.bracket{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.round{display:flex;flex-direction:column;min-width:0}
+.round h3{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;font-size:1.1rem;color:var(--muted);margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em}
+.round .col{flex:1;display:flex;flex-direction:column;justify-content:space-around;gap:10px}
+.match{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.match .lbl{font-size:.75rem;font-weight:600;color:var(--muted);padding:4px 10px;border-bottom:1px solid var(--line)}
+.side{display:block;width:100%;padding:9px 10px;font-weight:500;overflow-wrap:anywhere}
+button.side{border:0;border-radius:0;background:transparent;font-weight:500}
+button.side:hover{background:var(--done)}
+.side + .side{border-top:1px solid var(--line)}
+.side.won{font-weight:700;box-shadow:inset 4px 0 0 var(--gold)}
+.side.lost{color:var(--muted);text-decoration:line-through}
+.side.tbd{font-style:italic;color:var(--muted)}
+.champ{margin-top:16px;background:var(--surface);border:2px solid var(--gold);border-radius:12px;padding:16px;text-align:center}
+.champ .who{color:var(--muted)}
+.champ .spot{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;font-size:clamp(2rem,9vw,3rem);line-height:1.05;color:var(--accent);overflow-wrap:anywhere}
+@media (max-width:540px){ .bracket{grid-template-columns:1fr} .round .col{justify-content:flex-start} }
 </style>
 </head>
 <body>
@@ -88,6 +109,10 @@ var ADMIN_KEY = "2223a8f08f8b";
   function emptySlots(){ return ["","","","","","","",""]; }
   function players(){ return (data && data.players) ? data.players.filter(Boolean) : []; }
   function slots(){ var s = (data && data.slots) || []; var o = emptySlots(); for (var i=0;i<8;i++) o[i] = s[i] || ""; return o; }
+  function fill(a, n){ var o = []; for (var i=0;i<n;i++) o[i] = (a && a[i]) || ""; return o; }
+  function results(){ var r = (data && data.results) || {}; return {qf: fill(r.qf,4), sf: fill(r.sf,2), final: r.final || ""}; }
+  function tab(){ return location.hash === "#bracket" ? "bracket" : "draw"; }
+  window.addEventListener("hashchange", render);
 
   if (!firebaseConfig.databaseURL || firebaseConfig.databaseURL.indexOf("PASTE") === 0){
     root.textContent = "";
@@ -160,15 +185,93 @@ var ADMIN_KEY = "2223a8f08f8b";
     st.querySelector(".spot").textContent = stageSpot;
   }
 
+  // A side is {name} (known or pending when name is "") or {bye:true} (nobody is coming).
+  function decide(a, b, pick){
+    if (a.bye && b.bye) return {name:"", bye:true};
+    if (a.bye) return b;
+    if (b.bye) return a;
+    if (a.name && b.name && (pick === a.name || pick === b.name)) return {name:pick};
+    return {name:""};
+  }
+
+  function setWinner(round, idx, name){
+    ref.child("results").transaction(function(cur){
+      cur = cur || {};
+      var qf = fill(cur.qf,4), sf = fill(cur.sf,2), fin = cur.final || "";
+      if (round === "qf"){ qf[idx] = qf[idx] === name ? "" : name; sf[idx >> 1] = ""; fin = ""; }
+      else if (round === "sf"){ sf[idx] = sf[idx] === name ? "" : name; fin = ""; }
+      else fin = fin === name ? "" : name;
+      return {qf:qf, sf:sf, final:fin};
+    });
+  }
+
   function render(){
     if (!data) return;
     var s = slots(), ps = players();
     var allDrawn = ps.length > 0 && ps.every(function(p){ return s.indexOf(p) !== -1; });
+    var t = tab();
     root.textContent = "";
     root.appendChild(el("header", null, [
-      el("h1", {text:"The Draw"}),
-      el("p", {cls:"sub", text:"EA FC 26 Tournament quarter-finals. Tap your name to get a random spot. Everyone sees every draw live."})
+      el("h1", {text: t === "bracket" ? "The Bracket" : "The Draw"}),
+      el("p", {cls:"sub", text: t === "bracket"
+        ? "EA FC 26 Tournament. Filled in live from the draw, winners move through as results come in."
+        : "EA FC 26 Tournament quarter-finals. Tap your name to get a random spot. Everyone sees every draw live."})
     ]));
+    var tabs = el("nav", {cls:"tabs", "aria-label":"Sections"});
+    [["draw","Draw"],["bracket","Bracket"]].forEach(function(x){
+      var a = el("a", {href:"#" + x[0], text:x[1]});
+      if (x[0] === t) a.setAttribute("aria-current", "page");
+      tabs.appendChild(a);
+    });
+    root.appendChild(tabs);
+    if (t === "bracket") renderBracket(s, allDrawn);
+    else renderDraw(s, ps, allDrawn);
+    if (isAdmin) renderAdmin();
+  }
+
+  function renderBracket(s, allDrawn){
+    var r = results();
+    function seat(v){ return v ? {name:v} : {name:"", bye:allDrawn}; }
+    function match(lbl, a, b, pick, round, idx, waiting){
+      var live = isAdmin && a.name && b.name;
+      var won = (a.name && b.name && (pick === a.name || pick === b.name)) ? pick : "";
+      var box = el("div", {cls:"match"}, [el("div", {cls:"lbl", text:lbl})]);
+      [a, b].forEach(function(p, i){
+        var cls = "side", text;
+        if (p.name){ text = p.name; if (won) cls += won === p.name ? " won" : " lost"; }
+        else { cls += " tbd"; text = p.bye ? "Bye" : waiting[i]; }
+        if (live) box.appendChild(el("button", {cls:cls, text:text, title:"Tap to set the winner", onclick:function(){ setWinner(round, idx, p.name); }}));
+        else box.appendChild(el("div", {cls:cls, text:text}));
+      });
+      return box;
+    }
+    function round(title, kids){ return el("div", {cls:"round"}, [el("h3", {text:title}), el("div", {cls:"col"}, kids)]); }
+
+    var qf = [], qfW = [];
+    for (var q=0;q<4;q++){
+      var a = seat(s[q*2]), b = seat(s[q*2+1]);
+      qf.push(match("QF" + (q+1), a, b, r.qf[q], "qf", q, ["Not drawn yet","Not drawn yet"]));
+      qfW.push(decide(a, b, r.qf[q]));
+    }
+    var sf = [], sfW = [];
+    for (var k=0;k<2;k++){
+      sf.push(match("SF" + (k+1), qfW[k*2], qfW[k*2+1], r.sf[k], "sf", k, ["Winner of QF" + (k*2+1), "Winner of QF" + (k*2+2)]));
+      sfW.push(decide(qfW[k*2], qfW[k*2+1], r.sf[k]));
+    }
+    var fin = match("Final", sfW[0], sfW[1], r.final, "final", 0, ["Winner of SF1","Winner of SF2"]);
+    var champ = decide(sfW[0], sfW[1], r.final);
+
+    root.appendChild(el("div", {cls:"bracket"}, [round("Quarter-finals", qf), round("Semi-finals", sf), round("Final", [fin])]));
+    root.appendChild(el("div", {cls:"champ", "aria-live":"polite"}, [
+      el("div", {cls:"who", text: champ.name ? "Champion" : "The champion will appear here"}),
+      el("div", {cls:"spot", text: champ.name ? "🏆 " + champ.name : "🏆"})
+    ]));
+    root.appendChild(el("p", {cls:"note", text: isAdmin
+      ? "Organizer: tap a player in a match to send them through. Tap them again to undo."
+      : "The organizer enters results as matches finish. Byes go straight through."}));
+  }
+
+  function renderDraw(s, ps, allDrawn){
     root.appendChild(el("div", {cls:"stage" + (landed ? " landed" : ""), id:"stage", "aria-live":"polite"}, [
       el("div", {cls:"who", text: allDrawn && !spinning && !landed ? "The draw is complete" : stageWho}),
       el("div", {cls:"spot", text: allDrawn && !spinning && !landed ? "🏆" : stageSpot})
@@ -194,10 +297,11 @@ var ADMIN_KEY = "2223a8f08f8b";
     }
     root.appendChild(ties);
     root.appendChild(el("p", {cls:"note", text:"Each name can only be drawn once, and the spot is picked at random the moment you tap."}));
+  }
 
-    if (isAdmin){
-      var inp = el("input", {placeholder:"Add a player", "aria-label":"Add a player"});
-      root.appendChild(el("div", {cls:"admin"}, [
+  function renderAdmin(){
+    var inp = el("input", {placeholder:"Add a player", "aria-label":"Add a player"});
+    root.appendChild(el("div", {cls:"admin"}, [
         el("strong", {text:"Organizer controls"}),
         el("div", {cls:"row"}, [inp, el("button", {cls:"ctl", text:"Add player", onclick:function(){
           var v = inp.value.trim(); if (!v) return;
@@ -207,12 +311,11 @@ var ADMIN_KEY = "2223a8f08f8b";
           });
         }})]),
         el("div", {cls:"row"}, [el("button", {cls:"ctl", text:"Reset the draw", onclick:function(){
-          if (!confirm("Clear every drawn spot?")) return;
+          if (!confirm("Clear every drawn spot and bracket result?")) return;
           landed = false; stageWho = "Tap your name to draw your spot"; stageSpot = "?";
-          ref.child("slots").set(emptySlots());
+          ref.update({slots: emptySlots(), results: null});
         }})])
       ]));
-    }
   }
 })();
 </script>
