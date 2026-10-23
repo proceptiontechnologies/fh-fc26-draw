@@ -57,6 +57,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-o
 .round .col{flex:1;display:flex;flex-direction:column;justify-content:space-around;gap:10px}
 .match{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .match .lbl{font-size:.75rem;font-weight:600;color:var(--muted);padding:4px 10px;border-bottom:1px solid var(--line)}
+.match .score{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:600;font-size:1rem;color:var(--gold);padding:5px 10px;border-top:1px solid var(--line)}
+.match .score-in{display:block;width:100%;font:inherit;font-size:.85rem;padding:7px 10px;border:0;border-top:1px dashed var(--line);background:transparent;color:var(--ink)}
 .side{display:block;width:100%;padding:9px 10px;font-weight:500;overflow-wrap:anywhere}
 button.side{border:0;border-radius:0;background:transparent;font-weight:500}
 button.side:hover{background:var(--done)}
@@ -243,6 +245,12 @@ var ADMIN_KEY = "2223a8f08f8b";
         if (live) box.appendChild(el("button", {cls:cls, text:text, title:"Tap to set the winner", onclick:function(){ setWinner(round, idx, p.name); }}));
         else box.appendChild(el("div", {cls:cls, text:text}));
       });
+      var key = lbl.toLowerCase(), sc = (data.scores && data.scores[key]) || "";
+      if (live){
+        var inp = el("input", {cls:"score-in", value:sc, placeholder:"Score, e.g. 2–0 (7–2, 5–4)", "aria-label":lbl + " score"});
+        inp.addEventListener("change", function(){ ref.child("scores/" + key).set(inp.value.trim() || null); });
+        box.appendChild(inp);
+      } else if (sc) box.appendChild(el("div", {cls:"score", text:sc}));
       return box;
     }
     function round(title, kids){ return el("div", {cls:"round"}, [el("h3", {text:title}), el("div", {cls:"col"}, kids)]); }
@@ -313,7 +321,7 @@ var ADMIN_KEY = "2223a8f08f8b";
         el("div", {cls:"row"}, [el("button", {cls:"ctl", text:"Reset the draw", onclick:function(){
           if (!confirm("Clear every drawn spot and bracket result?")) return;
           landed = false; stageWho = "Tap your name to draw your spot"; stageSpot = "?";
-          ref.update({slots: emptySlots(), results: null});
+          ref.update({slots: emptySlots(), results: null, scores: null});
         }})])
       ]));
   }
