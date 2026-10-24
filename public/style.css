@@ -1,0 +1,76 @@
+:root{
+  color-scheme: light;
+  --bg:#EEF1F6; --surface:#FFFFFF; --ink:#0F1B33; --muted:#5B6780; --line:#D5DBE6;
+  --accent:#1F4FD8; --accent-ink:#FFFFFF; --gold:#F2B705; --done:#E7EEFF;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{ color-scheme: dark;
+    --bg:#0C1424; --surface:#142038; --ink:#EAF0FA; --muted:#93A1BC; --line:#26355A;
+    --accent:#6E95FF; --accent-ink:#0C1424; --gold:#F5C842; --done:#1B2D55; }
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+.wrap{max-width:720px;margin:0 auto;padding:20px 16px 48px}
+header{padding:12px 0 18px;border-bottom:4px solid var(--gold);margin-bottom:20px}
+h1{font-family:"Barlow Condensed","Arial Narrow",Impact,sans-serif;font-weight:800;font-size:clamp(2.4rem,10vw,4rem);line-height:.95;margin:0}
+.sub{color:var(--muted);margin:8px 0 0}
+h2{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;font-size:1.5rem;margin:24px 0 10px}
+.stage{background:var(--surface);border:2px solid var(--gold);border-radius:12px;padding:20px 16px;text-align:center;min-height:132px;display:flex;flex-direction:column;justify-content:center}
+.stage .who{color:var(--muted)}
+.stage .spot{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;font-size:clamp(2.6rem,12vw,3.6rem);line-height:1}
+.stage.landed .spot{color:var(--accent)}
+.names{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+button{font:inherit;font-weight:600;border-radius:10px;padding:14px 12px;border:2px solid var(--accent);background:var(--surface);color:var(--ink);cursor:pointer;text-align:left}
+button.name:not(:disabled):hover{background:var(--accent);color:var(--accent-ink)}
+button.name.drawn{background:var(--done);border-color:var(--line);cursor:default}
+button.name small{display:block;font-weight:500;color:var(--muted);font-size:.85rem}
+button.ctl{padding:10px 16px;text-align:center;color:var(--accent);background:transparent}
+button:disabled{cursor:default}
+button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.ties{display:grid;gap:10px}
+.tie{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:12px}
+.tie b{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-size:1.2rem;min-width:2.6em;color:var(--muted)}
+.tbd{color:var(--muted);font-style:italic}
+.note{color:var(--muted);font-size:.9rem;margin:12px 0 0}
+.admin{margin-top:28px;padding:14px;border:1px dashed var(--muted);border-radius:10px;display:grid;gap:10px}
+.admin .row{display:flex;gap:8px;flex-wrap:wrap}
+.admin input{flex:1;min-width:160px;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.err{background:var(--surface);border:2px solid #D64545;border-radius:10px;padding:14px}
+.tabs{display:flex;gap:4px;margin:-8px 0 20px;border-bottom:1px solid var(--line)}
+.tabs a{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;font-size:1.25rem;padding:8px 14px;color:var(--muted);text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs a[aria-current="page"]{color:var(--ink);border-color:var(--accent)}
+.tabs a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.bracket{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.round{display:flex;flex-direction:column;min-width:0}
+.round h3{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;font-size:1.1rem;color:var(--muted);margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em}
+.round .col{flex:1;display:flex;flex-direction:column;justify-content:space-around;gap:10px}
+.match{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.match .lbl{font-size:.75rem;font-weight:600;color:var(--muted);padding:4px 10px;border-bottom:1px solid var(--line)}
+.match .score{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:600;font-size:1rem;color:var(--gold);padding:5px 10px;border-top:1px solid var(--line)}
+.match .score-in{display:block;width:100%;font:inherit;font-size:.85rem;padding:7px 10px;border:0;border-top:1px dashed var(--line);background:transparent;color:var(--ink)}
+.side{display:block;width:100%;padding:9px 10px;font-weight:500;overflow-wrap:anywhere}
+button.side{border:0;border-radius:0;background:transparent;font-weight:500}
+button.side:hover{background:var(--done)}
+.side + .side{border-top:1px solid var(--line)}
+.side.won{font-weight:700;box-shadow:inset 4px 0 0 var(--gold)}
+.side.lost{color:var(--muted);text-decoration:line-through}
+.side.tbd{font-style:italic;color:var(--muted)}
+.champ{margin-top:16px;background:var(--surface);border:2px solid var(--gold);border-radius:12px;padding:16px;text-align:center}
+.champ .who{color:var(--muted)}
+.champ .spot{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;font-size:clamp(2rem,9vw,3rem);line-height:1.05;color:var(--accent);overflow-wrap:anywhere}
+@media (max-width:540px){ .bracket{grid-template-columns:1fr} .round .col{justify-content:flex-start} }
+.wrap.wide{max-width:1040px}
+.mini{font-size:.85rem;color:var(--muted)}
+.list{display:grid;gap:10px}
+.card{display:block;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--ink);text-decoration:none}
+a.card:hover{border-color:var(--accent)}
+.card b{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-size:1.3rem;display:block}
+.form{display:grid;gap:10px}
+.form label{display:grid;gap:4px;font-weight:600}
+.form input,.form select,.form textarea{font:inherit;font-weight:400;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:100%}
+.form textarea{min-height:9em}
+.ok{background:var(--surface);border:2px solid var(--gold);border-radius:10px;padding:14px;overflow-wrap:anywhere}
+.ok code{font-size:.9rem}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--done);border-radius:999px;padding:4px 4px 4px 12px;margin:0 6px 6px 0}
+.chip button{padding:2px 8px;border:0;background:transparent;color:var(--muted)}

@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tournament Draw</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap" id="root"><p>Loading the draw…</p></div>
+
+<script>
+(function(){
+  var root = document.getElementById("root");
+  var slug = location.pathname.split("/")[2];
+  var key = new URLSearchParams(location.search).get("admin") || "";
+  var isAdmin = false;
+  var data = null, prevSlots = null;
+  var spinning = false, landed = false, stageWho = "Tap your name to draw your spot", stageSpot = "?", msg = "";
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs){
+      if (k === "text") e.textContent = attrs[k];
+      else if (k === "cls") e.className = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    (kids||[]).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+
+  function api(method, action, body){
+    return fetch("/api/t/" + slug + "/" + action, {
+      method: method,
+      headers: {"content-type":"application/json", "x-admin-key": key},
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function(r){
+      return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || "Request failed"); return j; });
+    });
+  }
+  function fail(e){ msg = e.message; render(); }
+
+  // Round r of a bracket with `size` spots. Codes match the server's score keys.
+  function rounds(){ return Math.log2(data.size); }
+  function roundTitle(r){ var left = data.size >> r; return left === 2 ? "Final" : left === 4 ? "Semi-finals" : left === 8 ? "Quarter-finals" : "Round of " + left; }
+  function matchKey(r, m){ var left = data.size >> r; if (left === 2) return "final"; return (left === 4 ? "sf" : left === 8 ? "qf" : "r" + left + "-") + (m + 1); }
+  function matchLabel(r, m){ var k = matchKey(r, m); return k === "final" ? "Final" : k.toUpperCase(); }
+  function label(slot){ return matchLabel(0, slot >> 1); }
+  function players(){ return data.players; }
+  function slots(){ return data.slots; }
+  function tab(){ return location.hash === "#bracket" ? "bracket" : "draw"; }
+  window.addEventListener("hashchange", render);
+
+  function connect(){
+    var es = new EventSource("/api/t/" + slug + "/events");
+    es.onmessage = function(ev){
+      data = JSON.parse(ev.data);
+      document.title = data.name;
+      var now = slots();
+      if (prevSlots && !spinning){
+        for (var i=0;i<now.length;i++){
+          if (now[i] && !prevSlots[i]){ landed = true; stageWho = now[i] + " goes to"; stageSpot = label(i); }
+        }
+      }
+      prevSlots = now.slice();
+      render();
+    };
+    es.onerror = function(){
+      if (data) return; // EventSource reconnects by itself once we have loaded
+      es.close();
+      fetch("/api/t/" + slug + "/state").then(function(r){
+        root.textContent = "";
+        root.appendChild(el("div", {cls:"err", text: r.status === 404 ? "There’s no tournament at this link." : "Couldn’t reach the server. Refresh to try again."}));
+        root.appendChild(el("p", {cls:"note"}, [el("a", {href:"/", text:"See all tournaments"})]));
+      });
+    };
+  }
+
+  if (key) api("POST", "admin/check").then(function(){ isAdmin = true; render(); }, function(){ msg = "That organizer link isn’t valid for this tournament."; render(); });
+  connect();
+
+  function draw(name){
+    if (spinning || slots().indexOf(name) !== -1) return;
+    spinning = true; landed = false; stageWho = name + " is drawing…"; msg = ""; render();
+    var start = Date.now(), dur = 2000, result = null, done = false;
+
+    api("POST", "draw", {name:name}).then(function(r){ result = r.slot; }, function(){ result = -1; }).then(function(){ done = true; });
+
+    (function tick(){
+      var t = Date.now() - start;
+      if (t < dur || !done){
+        stageSpot = label(2 * Math.floor(Math.random() * data.size / 2)); renderStage();
+        setTimeout(tick, 60 + Math.min(t/dur,1)*240);
+      } else {
+        spinning = false;
+        if (result >= 0){ landed = true; stageWho = name + " goes to"; stageSpot = label(result); }
+        else { landed = false; stageWho = "That didn’t go through"; stageSpot = "?"; msg = "Someone may have drawn at the same moment. Try again."; }
+        prevSlots = slots().slice(); render();
+      }
+    })();
+  }
+
+  function renderStage(){
+    var st = document.getElementById("stage"); if (!st) return;
+    st.className = "stage" + (landed ? " landed" : "");
+    st.querySelector(".who").textContent = stageWho;
+    st.querySelector(".spot").textContent = stageSpot;
+  }
+
+  // A side is {name} (known or pending when name is "") or {bye:true} (nobody is coming).
+  function decide(a, b, pick){
+    if (a.bye && b.bye) return {name:"", bye:true};
+    if (a.bye) return b;
+    if (b.bye) return a;
+    if (a.name && b.name && (pick === a.name || pick === b.name)) return {name:pick};
+    return {name:""};
+  }
+
+  function render(){
+    if (!data) return;
+    var s = slots(), ps = players();
+    var allDrawn = ps.length > 0 && ps.every(function(p){ return s.indexOf(p) !== -1; });
+    var t = tab();
+    root.className = "wrap" + (t === "bracket" && data.size > 8 ? " wide" : "");
+    root.textContent = "";
+    root.appendChild(el("header", null, [
+      el("h1", {text: t === "bracket" ? "The Bracket" : "The Draw"}),
+      el("p", {cls:"sub", text: data.name + (t === "bracket"
+        ? ". Filled in live from the draw, winners move through as results come in."
+        : ". Tap your name to get a random spot. Everyone sees every draw live.")})
+    ]));
+    var tabs = el("nav", {cls:"tabs", "aria-label":"Sections"});
+    [["draw","Draw"],["bracket","Bracket"]].forEach(function(x){
+      var a = el("a", {href:"#" + x[0], text:x[1]});
+      if (x[0] === t) a.setAttribute("aria-current", "page");
+      tabs.appendChild(a);
+    });
+    root.appendChild(tabs);
+    if (t === "bracket") renderBracket(s, allDrawn);
+    else renderDraw(s, ps, allDrawn);
+    if (msg && t === "bracket") root.appendChild(el("p", {cls:"note", text:msg}));
+    if (isAdmin) renderAdmin(s, ps);
+    root.appendChild(el("p", {cls:"note"}, [el("a", {href:"/", text:"All tournaments"})]));
+  }
+
+  function renderBracket(s, allDrawn){
+    function seat(v){ return v ? {name:v} : {name:"", bye:allDrawn}; }
+    function match(r, m, a, b, waiting){
+      var lbl = matchLabel(r, m), key = matchKey(r, m), pick = data.rounds[r][m];
+      var live = isAdmin && a.name && b.name;
+      var won = (a.name && b.name && (pick === a.name || pick === b.name)) ? pick : "";
+      var box = el("div", {cls:"match"}, [el("div", {cls:"lbl", text:lbl})]);
+      [a, b].forEach(function(p, i){
+        var cls = "side", text;
+        if (p.name){ text = p.name; if (won) cls += won === p.name ? " won" : " lost"; }
+        else { cls += " tbd"; text = p.bye ? "Bye" : waiting[i]; }
+        if (live) box.appendChild(el("button", {cls:cls, text:text, title:"Tap to set the winner", onclick:function(){
+          api("POST", "admin/winner", {round:r, match:m, name:p.name}).catch(fail);
+        }}));
+        else box.appendChild(el("div", {cls:cls, text:text}));
+      });
+      var sc = data.scores[key] || "";
+      if (live){
+        var inp = el("input", {cls:"score-in", value:sc, placeholder:"Score, e.g. 2–0 (7–2, 6–5)", "aria-label":lbl + " score"});
+        inp.addEventListener("change", function(){ api("POST", "admin/score", {key:key, score:inp.value}).catch(fail); });
+        box.appendChild(inp);
+      } else if (sc) box.appendChild(el("div", {cls:"score", text:sc}));
+      return box;
+    }
+
+    var cols = [], sides = s.map(seat);
+    for (var r=0; r<rounds(); r++){
+      var boxes = [], next = [];
+      for (var m=0; m<sides.length/2; m++){
+        var a = sides[m*2], b = sides[m*2+1];
+        var waiting = r === 0 ? ["Not drawn yet","Not drawn yet"] : ["Winner of " + matchLabel(r-1, m*2), "Winner of " + matchLabel(r-1, m*2+1)];
+        boxes.push(match(r, m, a, b, waiting));
+        next.push(decide(a, b, data.rounds[r][m]));
+      }
+      cols.push(el("div", {cls:"round"}, [el("h3", {text:roundTitle(r)}), el("div", {cls:"col"}, boxes)]));
+      sides = next;
+    }
+    var champ = sides[0];
+
+    var grid = el("div", {cls:"bracket"}, cols);
+    grid.style.gridTemplateColumns = "repeat(" + cols.length + ",minmax(0,1fr))";
+    root.appendChild(grid);
+    root.appendChild(el("div", {cls:"champ", "aria-live":"polite"}, [
+      el("div", {cls:"who", text: champ.name ? "Champion" : "The champion will appear here"}),
+      el("div", {cls:"spot", text: champ.name ? "🏆 " + champ.name : "🏆"})
+    ]));
+    root.appendChild(el("p", {cls:"note", text: isAdmin
+      ? "Organizer: tap a player in a match to send them through. Tap them again to undo."
+      : "The organizer enters results as matches finish. Byes go straight through."}));
+  }
+
+  function renderDraw(s, ps, allDrawn){
+    root.appendChild(el("div", {cls:"stage" + (landed ? " landed" : ""), id:"stage", "aria-live":"polite"}, [
+      el("div", {cls:"who", text: allDrawn && !spinning && !landed ? "The draw is complete" : stageWho}),
+      el("div", {cls:"spot", text: allDrawn && !spinning && !landed ? "🏆" : stageSpot})
+    ]));
+
+    root.appendChild(el("h2", {text:"Players"}));
+    var grid = el("div", {cls:"names"});
+    ps.forEach(function(p){
+      var i = s.indexOf(p);
+      var b = el("button", {cls:"name" + (i !== -1 ? " drawn" : ""), onclick:function(){ draw(p); }}, [p, el("small", {text: i !== -1 ? label(i) : "Tap to draw"})]);
+      if (i !== -1 || spinning) b.disabled = true;
+      grid.appendChild(b);
+    });
+    root.appendChild(grid);
+    if (msg) root.appendChild(el("p", {cls:"note", text:msg}));
+
+    root.appendChild(el("h2", {text: roundTitle(0) + " matchups"}));
+    var ties = el("div", {cls:"ties"});
+    var byes = allDrawn && ps.length < data.size;
+    for (var q=0; q<data.size/2; q++){
+      var side = function(v){ return v ? el("span",{text:v}) : el("span",{cls:"tbd", text: byes ? "Bye, straight through" : "?"}); };
+      ties.appendChild(el("div", {cls:"tie"}, [el("b",{text:matchLabel(0, q)}), side(s[q*2]), el("span",{cls:"tbd",text:"vs"}), side(s[q*2+1])]));
+    }
+    root.appendChild(ties);
+    root.appendChild(el("p", {cls:"note", text:"Each name can only be drawn once, and the spot is picked at random the moment you tap."}));
+  }
+
+  function renderAdmin(s, ps){
+    var inp = el("input", {placeholder:"Add a player", "aria-label":"Add a player"});
+    var chips = el("div", null, ps.filter(function(p){ return s.indexOf(p) === -1; }).map(function(p){
+      return el("span", {cls:"chip"}, [p, el("button", {text:"✕", "aria-label":"Remove " + p, onclick:function(){
+        api("POST", "admin/player/remove", {name:p}).catch(fail);
+      }})]);
+    }));
+    root.appendChild(el("div", {cls:"admin"}, [
+      el("strong", {text:"Organizer controls"}),
+      el("div", {cls:"row"}, [inp, el("button", {cls:"ctl", text:"Add player", onclick:function(){
+        var v = inp.value.trim(); if (!v) return;
+        msg = ""; api("POST", "admin/player", {name:v}).catch(fail);
+      }})]),
+      chips.childNodes.length ? el("div", null, [el("div", {cls:"mini", text:"Not drawn yet (tap ✕ to remove):"}), chips]) : null,
+      el("div", {cls:"row"}, [el("button", {cls:"ctl", text:"Reset the draw", onclick:function(){
+        if (!confirm("Clear every drawn spot, result and score?")) return;
+        landed = false; stageWho = "Tap your name to draw your spot"; stageSpot = "?";
+        api("POST", "admin/reset").catch(fail);
+      }})])
+    ]));
+  }
+})();
+</script>
+</body>
+</html>

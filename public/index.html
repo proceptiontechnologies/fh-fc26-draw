@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FH Tournaments</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap" id="root"><p>Loading tournaments…</p></div>
+
+<script>
+(function(){
+  var root = document.getElementById("root");
+  var key = new URLSearchParams(location.search).get("admin") || "";
+  var isMaster = false, list = [], created = null, msg = "";
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs){
+      if (k === "text") e.textContent = attrs[k];
+      else if (k === "cls") e.className = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    (kids||[]).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function api(method, url, body){
+    return fetch(url, {method:method, headers:{"content-type":"application/json", "x-admin-key":key}, body: body ? JSON.stringify(body) : undefined})
+      .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || "Request failed"); return j; }); });
+  }
+  function load(){ return api("GET", "/api/tournaments").then(function(l){ list = l; render(); }); }
+
+  function render(){
+    root.textContent = "";
+    root.appendChild(el("header", null, [
+      el("h1", {text:"Tournaments"}),
+      el("p", {cls:"sub", text:"Draws and brackets, live for everyone."})
+    ]));
+
+    if (created){
+      var base = location.origin + "/t/" + created.slug;
+      root.appendChild(el("div", {cls:"ok"}, [
+        el("strong", {text:"Tournament created."}),
+        el("p", null, ["Share with players: ", el("a", {href:base, text:base})]),
+        el("p", null, ["Organizer link (keep this to yourself): ", el("a", {href:base + "?admin=" + created.adminKey, text:base + "?admin=" + created.adminKey})])
+      ]));
+    }
+
+    var cards = el("div", {cls:"list"});
+    list.forEach(function(t){
+      var info = t.players + " players · " + t.size + "-player bracket" + (t.champion ? " · 🏆 " + t.champion : "");
+      cards.appendChild(el("a", {cls:"card", href:"/t/" + t.slug + (isMaster ? "?admin=" + encodeURIComponent(key) : "")}, [el("b", {text:t.name}), el("span", {cls:"mini", text:info})]));
+    });
+    if (!list.length) cards.appendChild(el("p", {cls:"note", text:"No tournaments yet."}));
+    root.appendChild(cards);
+
+    if (isMaster){
+      var name = el("input", {required:"", placeholder:"e.g. EA FC 26 Christmas Cup"});
+      var size = el("select", null, [4, 8, 16].map(function(n){ var o = el("option", {value:n, text:n + " players"}); if (n === 8) o.selected = true; return o; }));
+      var ps = el("textarea", {placeholder:"One name per line. You can add more later."});
+      root.appendChild(el("h2", {text:"New tournament"}));
+      root.appendChild(el("form", {cls:"form admin", onsubmit:function(e){
+        e.preventDefault(); msg = "";
+        api("POST", "/api/tournaments", {name:name.value, size:+size.value, players:ps.value.split("\n")})
+          .then(function(r){ created = r; return load(); })
+          .catch(function(err){ msg = err.message; render(); });
+      }}, [
+        el("label", null, ["Name", name]),
+        el("label", null, ["Bracket size", size]),
+        el("label", null, ["Players", ps]),
+        msg ? el("p", {cls:"note", text:msg}) : null,
+        el("div", {cls:"row"}, [el("button", {cls:"ctl", type:"submit", text:"Create tournament"})])
+      ]));
+    }
+  }
+
+  if (key) api("POST", "/api/master/check").then(function(){ isMaster = true; render(); }, function(){});
+  load().catch(function(){ root.textContent = ""; root.appendChild(el("div", {cls:"err", text:"Couldn’t reach the server. Refresh to try again."})); });
+})();
+</script>
+</body>
+</html>
